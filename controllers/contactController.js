@@ -8,6 +8,16 @@ const getContacts = asyncHandler(async (req, res) => {
   res.status(200).json(contacts);
 });
 
+// @desc GET all contacts
+// @route GET /api/contacts/test
+// @access private
+const test = asyncHandler(async (req, res) => {
+  console.log("insude test");
+  const contacts = await Contact.find({ phone: { $regex: "^8" } }).exec();
+  console.log("outside test");
+  res.status(200).json(contacts);
+});
+
 // @desc GET Individual contacts
 // @route GET /api/contacts/:id
 // @access private
@@ -30,17 +40,16 @@ const createContact = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error("All fields are mandetory");
   }
-  console.log(phone);
-  Contact.exists({ phone: phone }, (err, res) => {
-    if (res) {
-      console.log(res);
-      res.status(400);
-      throw new Error("You already have a contact with the same phone number");
-    }
-    if (err) {
-      console.log("Error in checking for existing contact");
-    }
-  });
+  const user_id = req.user.id;
+  const contactsOfUser = await Contact.find({ user_id: user_id });
+  const phoneNoExists = contactsOfUser.some((con) => con.phone === phone);
+  if (phoneNoExists) {
+    console.log("A user with the following details exists");
+    res.status(400);
+    throw new Error(
+      "You already have a contact with the same phone number" + phoneNoExists
+    );
+  }
 
   const contact = await Contact.create({
     name: name,
@@ -55,11 +64,22 @@ const createContact = asyncHandler(async (req, res) => {
 // @route PUT /api/contacts/:id
 // @access private
 const updateContact = asyncHandler(async (req, res) => {
+  // check if a contact exists
   const contact = await Contact.findById(req.params.id);
   if (!contact) {
     res.status(404);
     throw new Error("Contact not Found");
   }
+  // make sure user owns the contact
+  if (contact.user_id.toString() !== req.user.id) {
+    res.status(400);
+    console.log(contact.user_id.toString(), req.user.id);
+    throw new Error(
+      "User Not authorized to perform actions on other user's data"
+    );
+  }
+  console.log(contact.user_id.toString(), req.user.id);
+  // User can only update their own contact
   const updatedContact = await Contact.findByIdAndUpdate(
     req.params.id,
     req.body,
@@ -77,7 +97,15 @@ const deleteContact = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error("Contact not Found");
   }
-  await Contact.deleteOne();
+  // make sure user owns the contact
+  if (contact.user_id.toString() !== req.user.id) {
+    res.status(400);
+    console.log(contact.user_id.toString(), req.user.id);
+    throw new Error(
+      "User Not authorized to perform actions on other user's data"
+    );
+  }
+  await Contact.deleteOne({ _id: req.params.id });
   res.status(200).json(contact);
 });
 
@@ -87,4 +115,5 @@ module.exports = {
   createContact,
   updateContact,
   deleteContact,
+  test,
 };
